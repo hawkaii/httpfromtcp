@@ -1,19 +1,37 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"sync/atomic"
 
+	"github.com/hawkaii/httpfromtcp/internal/request"
 	"github.com/hawkaii/httpfromtcp/internal/response"
 )
+
+type HandlerError struct {
+	StatusCode response.StatusCode
+	Message    string
+}
+
+type Handler func(io.Writer, *request.Request) *HandlerError
+
+func writeHandlerError(s response.StatusCode, msg string) *HandlerError {
+	h := &HandlerError{
+		StatusCode: s,
+		Message:    msg,
+	}
+	return h
+}
 
 type Server struct {
 	listener net.Listener // The listener to accept connections
 	closed   atomic.Bool  // Tracks if the server is closed
 }
 
-func Serve(port int) (*Server, error) {
+func Serve(port int, handler Handler) (*Server, error) {
 	// Format the port into a string properly
 	address := fmt.Sprintf(":%d", port)
 
@@ -29,7 +47,7 @@ func Serve(port int) (*Server, error) {
 	}
 
 	// Start accepting connections in a goroutine
-	go server.listen()
+	go server.listen(handler)
 
 	return server, nil
 }
@@ -44,7 +62,7 @@ func (s *Server) Close() error {
 
 }
 
-func (s *Server) listen() {
+func (s *Server) listen(handler Handler) {
 	for {
 
 		conn, err := s.listener.Accept()
@@ -57,26 +75,66 @@ func (s *Server) listen() {
 			continue
 		}
 
-		go s.handle(conn)
+		go s.handle(conn, handler)
 
 	}
 
 }
 
-func (s *Server) handle(conn net.Conn) {
+func (s *Server) handle(conn net.Conn, handler Handler) {
 	defer conn.Close()
 	// Write the HTTP response
-	err := response.WriteStatusLine(conn, response.StatusCode(200))
 
+	req, err := request.RequestFromReader(conn)
 	if err != nil {
+		fmt.Printf("%s", err)
 		return
 	}
 
-	h := response.GetDefaultHeaders(0)
+	buf := bytes.Buffer{}
 
-	err = response.WriteHeaders(conn, h)
-	if err != nil {
-		return
+	handlerErr := handler(&buf, req)
+	if handlerErr != nil {
+		err = response.WriteStatusLine(conn, handlerErr.StatusCode)
+		fmt.Printf("%d \n message: %s", handlerErr.StatusCode, handlerErr.Message)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		errorHeaders := response.GetDefaultHeaders(len(handlerErr.Message))
+		err = response.WriteHeaders(conn, errorHeaders)
+		if err != nil {
+			fmt.Printf("Error writing header: %s\n", err)
+			return
+		}
+
+		_, err = conn.Write([]byte(handlerErr.Message))
+		if err != nil {
+			fmt.Printf("Error writing header: %s\n", err)
+			return
+		}
+	} else {
+		err = response.WriteStatusLine(conn, response.StatusCodeSuccess)
+		if err != nil {
+			fmt.Printf("Error writing status line: %s\n", err)
+			return
+		}
+
+		h := response.GetDefaultHeaders(buf.Len())
+
+		err = response.WriteHeaders(conn, h)
+		if err != nil {
+			fmt.Printf("Error writing header: %s\n", err)
+			return
+		}
+
+		_, err = io.Copy(conn, &buf)
+		if err != nil {
+			fmt.Printf("Error writing header: %s\n", err)
+			return
+		}
+
 	}
 
 }

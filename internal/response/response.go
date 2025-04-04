@@ -35,7 +35,6 @@ func getStatusLine(statusCode StatusCode) []byte {
 }
 
 func GetDefaultHeaders(contentLen int) headers.Headers {
-
 	h := headers.NewHeaders()
 	strLen := strconv.Itoa(contentLen)
 	h.Set("Content-Length", string(strLen))

@@ -16,10 +16,6 @@ const (
 	StatusCodeInternalServerError StatusCode = 500
 )
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
-	_, err := w.Write(getStatusLine(statusCode))
-	return err
-}
 func getStatusLine(statusCode StatusCode) []byte {
 	reasonPhrase := ""
 	switch statusCode {

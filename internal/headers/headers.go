@@ -14,6 +14,11 @@ func NewHeaders() Headers {
 	return map[string]string{}
 }
 
+func (h Headers) Override(key, value string) {
+	key = strings.ToLower(key)
+	h[key] = value
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	// print the data with crlf encoding
 
@@ -60,6 +65,11 @@ func (h Headers) Set(key, value string) {
 		}, ", ")
 	}
 	h[key] = value
+}
+
+func (h Headers) Remove(key string) {
+	key = strings.ToLower(key)
+	delete(h, key)
 }
 
 var tokenChars = []byte{'!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~'}
